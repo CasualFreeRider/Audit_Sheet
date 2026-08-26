@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Field Audit</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12181F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Field Audit">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --paper:#E7EBEF;
+  --surface:#FFFFFF;
+  --ink:#12181F;
+  --muted:#5F6873;
+  --line:#C6CDD5;
+  --line-soft:#DDE3E8;
+  --red:#C8102E;
+  --red-soft:#FBEAEC;
+  --amber:#B47100;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.45;
+  padding-bottom:calc(84px + env(safe-area-inset-bottom));
+  overscroll-behavior-y:contain;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+
+/* ---------- Title block: the persistent drawing-sheet header ---------- */
+.titleblock{
+  position:sticky;top:0;z-index:40;
+  background:var(--surface);
+  border-bottom:2px solid var(--red);
+  padding:calc(8px + env(safe-area-inset-top)) 14px 0;
+}
+.tb-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.tb-name{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.tb-count{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.tb-count b{color:var(--ink)}
+.tb-grid{display:grid;grid-template-columns:1fr 1fr 1fr;margin-top:6px}
+.tb-cell{padding:4px 8px 8px 0;min-width:0}
+.tb-cell+.tb-cell{border-left:1px solid var(--line-soft);padding-left:10px}
+.tb-label{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:block;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-value{font-family:var(--mono);font-size:15px;font-weight:700;letter-spacing:.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;margin-top:2px}
+.tb-value.empty{color:var(--line);font-weight:500}
+
+/* ---------- Tabs ---------- */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--line)}
+.tab{flex:1;appearance:none;background:none;border:0;padding:13px 4px 11px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--red);font-weight:700}
+
+main{padding:14px 14px 0}
+.panel[hidden]{display:none}
+
+/* ---------- Fields — one per row ---------- */
+.field{margin-bottom:14px}
+.flabel{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:5px}
+.flabel .req{color:var(--red);font-weight:700}
+.ctl{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:2px;
+  padding:13px 12px;min-height:50px;font-family:var(--mono);font-size:16px}
+textarea.ctl{font-family:var(--sans);min-height:78px;resize:vertical;line-height:1.4}
+select.ctl{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),linear-gradient(135deg,var(--ink) 50%,transparent 50%);
+  background-position:calc(100% - 19px) 22px,calc(100% - 13px) 22px;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
+.ctl.missing{border-color:var(--red);background:var(--red-soft)}
+.row{display:flex;gap:8px;align-items:stretch}
+.row .ctl{flex:1;min-width:0}
+.mini{background:var(--ink);color:#fff;border:0;border-radius:2px;padding:0 16px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.mini.ghost{background:none;color:var(--muted);border:1px solid var(--line)}
+
+/* ---------- Photos ---------- */
+.photobar{display:flex;gap:8px}
+.photobar .mini{flex:1;padding:14px 0;background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.thumb{position:relative;width:72px;height:72px;border:1px solid var(--line);border-radius:2px;overflow:hidden;background:#000}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb button{position:absolute;top:0;right:0;width:26px;height:26px;border:0;background:var(--ink);
+  color:#fff;font-size:15px;line-height:26px;padding:0;cursor:pointer}
+
+/* ---------- Save bar ---------- */
+.savebar{position:fixed;left:0;right:0;bottom:0;z-index:45;background:var(--surface);
+  border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  display:flex;gap:10px;align-items:center}
+.save{flex:1;background:var(--red);color:#fff;border:0;border-radius:2px;padding:16px;
+  font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;cursor:pointer}
+.save:disabled{background:var(--line);color:#fff}
+
+/* ---------- Entries ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:2px;padding:11px 12px;margin-bottom:9px}
+.card-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.card-id{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--red);font-weight:700}
+.card-time{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.card-loc{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:5px;letter-spacing:.02em}
+.card-asset{font-size:16px;font-weight:600;margin-top:3px;line-height:1.3}
+.card-meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6}
+.card-meta b{color:var(--ink);font-weight:600}
+.card-notes{font-size:14px;color:var(--muted);margin-top:5px;white-space:pre-wrap}
+.card-acts{display:flex;gap:8px;margin-top:10px}
+.card-acts .mini{flex:1;padding:9px 0;text-align:center}
+.empty-state{background:var(--surface);border:1px dashed var(--line);border-radius:2px;
+  padding:34px 20px;text-align:center;color:var(--muted)}
+.empty-state p{margin:0;font-size:15px}
+.empty-state p+p{margin-top:10px;font-size:13px}
+
+.section-h{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);margin:22px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.section-h:first-child{margin-top:2px}
+.chiplist{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);
+  border-radius:2px;padding:7px 11px;font-family:var(--mono);font-size:12.5px}
+.chip i{font-style:normal;color:var(--muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+.note{font-size:13.5px;color:var(--muted);margin:8px 0 0}
+.note code{font-family:var(--mono);font-size:12.5px;background:var(--surface);padding:1px 4px;border:1px solid var(--line-soft)}
+.note.bad{color:var(--red)}
+.errbox{background:var(--red-soft);border:1px solid var(--red);border-radius:2px;padding:11px 12px;margin-top:10px;
+  font-family:var(--mono);font-size:12px;line-height:1.65;color:var(--ink)}
+.errbox[hidden]{display:none}
+.errbox b{display:block;letter-spacing:.12em;text-transform:uppercase;font-size:10px;color:var(--red);margin-bottom:6px}
+.danger{background:none;border:1px solid var(--red);color:var(--red);width:100%;padding:14px;border-radius:2px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;margin-top:4px}
+.exportbtn{width:100%;background:var(--ink);color:#fff;border:0;border-radius:2px;padding:16px;margin-bottom:9px;
+  font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-align:left}
+.exportbtn span{display:block;font-size:10px;letter-spacing:.06em;text-transform:none;opacity:.65;margin-top:3px;font-weight:400}
+.exportbtn.alt{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.exportbtn:disabled{opacity:.4}
+
+/* ---------- Toast ---------- */
+#toast{position:fixed;left:14px;right:14px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:60;
+  background:var(--ink);color:#fff;padding:13px 15px;border-radius:2px;border-left:4px solid var(--red);
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;
+  transform:translateY(16px);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+#toast.on{opacity:1;transform:translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="titleblock">
+  <div class="tb-top">
+    <span class="tb-name">Field Audit</span>
+    <span class="tb-count"><b id="cCount">0</b> entries &nbsp;·&nbsp; <b id="cPhotos">0</b> photos</span>
+  </div>
+  <div class="tb-grid" id="tbGrid"></div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab" id="tabCapture" role="tab" aria-selected="true" aria-controls="pCapture">Capture</button>
+  <button class="tab" id="tabEntries" role="tab" aria-selected="false" aria-controls="pEntries">Entries</button>
+  <button class="tab" id="tabSetup" role="tab" aria-selected="false" aria-controls="pSetup">Config</button>
+</nav>
+
+<main>
+
+<!-- ============ CAPTURE ============ -->
+<section class="panel" id="pCapture" role="tabpanel" aria-labelledby="tabCapture">
+
+  <!-- Shown only when no config has been loaded -->
+  <div id="noConfig">
+    <div class="empty-state">
+      <p>No configuration loaded.</p>
+      <p>Go to the <b>Config</b> tab and upload the audit CSV. The form on this
+         page is built from whatever fields that file defines.</p>
+    </div>
+  </div>
+
+  <!-- Fields are generated here, one per row -->
+  <div id="formHost"></div>
+
+  <!-- Photos: static markup, never rebuilt, so the handlers below stay bound -->
+  <div class="field" id="photoField" hidden>
+    <span class="flabel">Photos</span>
+    <div class="photobar">
+      <button class="mini" type="button" id="btnCamera">Camera</button>
+      <button class="mini" type="button" id="btnGallery">Gallery</button>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <input type="file" id="inCamera" accept="image/*" capture="environment" multiple hidden>
+    <input type="file" id="inGallery" accept="image/*" multiple hidden>
+  </div>
+</section>
+
+<!-- ============ ENTRIES ============ -->
+<section class="panel" id="pEntries" role="tabpanel" aria-labelledby="tabEntries" hidden>
+  <div class="section-h">Export</div>
+  <button class="exportbtn" id="btnCsvZip">Export CSV + photos
+    <span>One .zip — audit.csv plus every photo, filenames matched to rows</span></button>
+  <button class="exportbtn alt" id="btnCsv">Export CSV only
+    <span>Spreadsheet rows, no image files</span></button>
+  <div class="section-h">Captured</div>
+  <div id="list"></div>
+</section>
+
+<!-- ============ CONFIG ============ -->
+<section class="panel" id="pSetup" role="tabpanel" aria-labelledby="tabSetup" hidden>
+  <div class="section-h">Configuration</div>
+  <div class="photobar" style="gap:8px">
+    <button class="mini" type="button" id="btnUploadConfig">Upload config</button>
+    <button class="mini ghost" type="button" id="btnClearConfig">Clear config</button>
+  </div>
+  <p class="note" id="configStatus">No configuration loaded.</p>
+  <div class="errbox" id="configErrors" hidden></div>
+  <div class="chiplist" id="configFields" style="margin-top:10px"></div>
+  <p class="note">The CSV defines the fields. Column A holds the row labels
+    (<code>Type</code>, <code>Name</code>, <code>Required</code>, <code>Options1</code>…);
+    every column after that is one field. Loading a new file does not delete entries you
+    have already captured.</p>
+  <input type="file" id="inConfig" accept=".csv,text/csv,text/plain" hidden>
+
+  <div class="section-h">Storage</div>
+  <p class="note" id="storeNote">Checking storage…</p>
+  <button class="danger" id="btnWipe">Delete all entries</button>
+  <p class="note">Export first. This cannot be undone.</p>
+  <div style="height:20px"></div>
+</section>
+
+</main>
+
+<div class="savebar" id="savebar">
+  <button class="save" id="btnSave">Save entry</button>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   Storage — IndexedDB, with an in-memory fallback so the app
+   still runs (for the session) where IDB is unavailable.
+   ============================================================ */
+var DB_NAME='seus_field_audit', DB_VER=1, db=null, usingMemory=false;
+var mem={entries:[],meta:{}};
+
+function openDb(){
+  return new Promise(function(res){
+    var req;
+    try{ req=indexedDB.open(DB_NAME,DB_VER); }catch(e){ usingMemory=true; return res(); }
+    req.onupgradeneeded=function(){
+      var d=req.result;
+      if(!d.objectStoreNames.contains('entries')) d.createObjectStore('entries',{keyPath:'id'});
+      if(!d.objectStoreNames.contains('meta')) d.createObjectStore('meta',{keyPath:'k'});
+    };
+    req.onsuccess=function(){ db=req.result; res(); };
+    req.onerror=function(){ usingMemory=true; res(); };
+    req.onblocked=function(){ usingMemory=true; res(); };
+  });
+}
+function tx(store,mode){ return db.transaction(store,mode).objectStore(store); }
+function idbAll(store){
+  return new Promise(function(res){ var r=tx(store,'readonly').getAll(); r.onsuccess=function(){res(r.result||[])}; r.onerror=function(){res([])}; });
+}
+function idbPut(store,val){
+  return new Promise(function(res){ var r=tx(store,'readwrite').put(val); r.onsuccess=function(){res(true)}; r.onerror=function(){res(false)}; });
+}
+function idbDel(store,key){
+  return new Promise(function(res){ var r=tx(store,'readwrite').delete(key); r.onsuccess=function(){res(true)}; r.onerror=function(){res(false)}; });
+}
+function idbClear(store){
+  return new Promise(function(res){ var r=tx(store,'readwrite').clear(); r.onsuccess=function(){res(true)}; r.onerror=function(){res(false)}; });
+}
+
+var store={
+  allEntries:function(){ return usingMemory?Promise.resolve(mem.entries.slice()):idbAll('entries'); },
+  putEntry:function(e){
+    if(usingMemory){ var i=mem.entries.findIndex(function(x){return x.id===e.id}); if(i>-1)mem.entries[i]=e; else mem.entries.push(e); return Promise.resolve(true); }
+    return idbPut('entries',e);
+  },
+  delEntry:function(id){
+    if(usingMemory){ mem.entries=mem.entries.filter(function(x){return x.id!==id}); return Promise.resolve(true); }
+    return idbDel('entries',id);
+  },
+  clearEntries:function(){ if(usingMemory){ mem.entries=[]; return Promise.resolve(true);} return idbClear('entries'); },
+  getMeta:function(k){
+    if(usingMemory) return Promise.resolve(mem.meta[k]);
+    return new Promise(function(res){ var r=tx('meta','readonly').get(k); r.onsuccess=function(){res(r.result?r.result.v:undefined)}; r.onerror=function(){res(undefined)}; });
+  },
+  setMeta:function(k,v){ if(usingMemory){ mem.meta[k]=v; return Promise.resolve(true);} return idbPut('meta',{k:k,v:v}); }
+};
+
+/* ============================================================
+   State
+   ============================================================ */
+var config=null;       // [{type,name,required,options[]}]
+var entries=[];        // newest first
+var draftPhotos=[];    // {blob, url}
+var editingId=null;
+var seq=0;
+
+var $=function(s){return document.querySelector(s)};
+var $$=function(s){return Array.prototype.slice.call(document.querySelectorAll(s))};
+
+/* ============================================================
+   Toast
+   ============================================================ */
+var toastEl=$('#toast'), toastT;
+function toast(msg){
+  toastEl.textContent=msg; toastEl.classList.add('on');
+  clearTimeout(toastT); toastT=setTimeout(function(){toastEl.classList.remove('on')},3200);
+}
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+var TABS=[['#tabCapture','#pCapture'],['#tabEntries','#pEntries'],['#tabSetup','#pSetup']];
+function showTab(idx){
+  TABS.forEach(function(p,i){
+    $(p[0]).setAttribute('aria-selected', i===idx?'true':'false');
+    $(p[1]).hidden = i!==idx;
+  });
+  $('#savebar').style.display = (idx===0 && config) ? 'flex' : 'none';
+  document.body.style.paddingBottom = (idx===0 && config) ? 'calc(84px + env(safe-area-inset-bottom))' : '20px';
+  window.scrollTo(0,0);
+  if(idx===1) renderList();
+  if(idx===2) renderConfigPanel();
+}
+TABS.forEach(function(p,i){ $(p[0]).addEventListener('click',function(){showTab(i)}) });
+
+/* ============================================================
+   CSV reading — RFC4180-ish. Handles the BOM Excel writes,
+   CRLF or LF line endings, quoted cells and doubled quotes.
+   Returns an array of rows; every row is an array of strings.
+   Blank rows are preserved so row numbers stay meaningful.
+   ============================================================ */
+function parseCsv(text){
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  var rows=[], row=[], cell='', quoted=false, i=0, ch, next;
+  for(i=0;i<text.length;i++){
+    ch=text[i]; next=text[i+1];
+    if(quoted){
+      if(ch==='"'){
+        if(next==='"'){ cell+='"'; i++; }
+        else quoted=false;
+      }else cell+=ch;
+      continue;
+    }
+    if(ch==='"'){ quoted=true; continue; }
+    if(ch===','){ row.push(cell); cell=''; continue; }
+    if(ch==='\r' || ch==='\n'){
+      if(ch==='\r' && next==='\n') i++;
+      row.push(cell); cell=''; rows.push(row); row=[];
+      continue;
+    }
+    cell+=ch;
+  }
+  row.push(cell); rows.push(row);
+  // Drop trailing rows that are entirely empty (a file ending in a newline).
+  while(rows.length && rows[rows.length-1].every(function(c){return c.trim()===''})) rows.pop();
+  return rows;
+}
+
+/* Spreadsheet column letter, so an error message points at something
+   the supervisor can actually find in Excel. 1 -> B, 2 -> C … */
+function colLetter(n){
+  var s='';
+  n=n+1;
+  while(n>0){ var r=(n-1)%26; s=String.fromCharCode(65+r)+s; n=Math.floor((n-1)/26); }
+  return s;
+}
+
+var TYPE_MAP={dropdown:'dropdown',select:'dropdown',list:'dropdown',
+              text:'text',string:'text',
+              number:'number',numeric:'number',
+              textarea:'textarea',memo:'textarea',longtext:'textarea'};
+
+/* ============================================================
+   Config parsing
+   Transposed layout: column A is row labels, every further column
+   is one field. Row 1 Type, row 2 Name, row 3 Required, rows 4+
+   are the dropdown options for that column, in the order given.
+   ============================================================ */
+function parseConfig(text){
+  var rows=parseCsv(text), errors=[], fields=[], seen={};
+  if(rows.length<3) return {errors:['The file needs at least three rows: Type, Name and Required.']};
+
+  var typeRow=rows[0], nameRow=rows[1], reqRow=rows[2];
+  var label=function(r){ return (r[0]||'').trim().toLowerCase(); };
+  if(label(typeRow).indexOf('type')!==0) errors.push('Row 1, column A should read "Type" — found "'+(typeRow[0]||'')+'".');
+  if(label(nameRow).indexOf('name')!==0) errors.push('Row 2, column A should read "Name" — found "'+(nameRow[0]||'')+'".');
+  if(label(reqRow).indexOf('required')!==0) errors.push('Row 3, column A should read "Required" — found "'+(reqRow[0]||'')+'".');
+  if(errors.length) return {errors:errors};
+
+  var width=Math.max(typeRow.length,nameRow.length,reqRow.length);
+
+  for(var c=1;c<width;c++){
+    var rawType=(typeRow[c]||'').trim();
+    var name=(nameRow[c]||'').trim();
+    if(!rawType && !name) continue;                       // padding column — ignore
+    var where='Column '+colLetter(c);
+
+    if(!name){ errors.push(where+': a Type is set but the Name row is empty.'); continue; }
+    if(seen[name.toLowerCase()]){ errors.push(where+': the field name "'+name+'" is used twice.'); continue; }
+
+    var type=TYPE_MAP[rawType.toLowerCase()];
+    if(!type){
+      errors.push(where+' ('+name+'): Type is "'+rawType+'". It must be Dropdown, Text, Number or Textarea.');
+      continue;
+    }
+
+    var options=[], optSeen={};
+    for(var r=3;r<rows.length;r++){
+      var v=((rows[r]||[])[c]||'').trim();
+      if(!v || optSeen[v]) continue;
+      optSeen[v]=true; options.push(v);                   // order as authored, not sorted
+    }
+    if(type==='dropdown' && !options.length){
+      errors.push(where+' ('+name+'): a Dropdown needs at least one option in the Options rows.');
+      continue;
+    }
+    if(type!=='dropdown' && options.length){
+      errors.push(where+' ('+name+'): options are listed but the Type is '+rawType+'. Change the Type to Dropdown, or clear the options.');
+      continue;
+    }
+
+    seen[name.toLowerCase()]=true;
+    fields.push({
+      type:type,
+      name:name,
+      required:/^(y|t|1)/i.test(((reqRow[c]||'').trim())),
+      options:options
+    });
+  }
+
+  if(errors.length) return {errors:errors};
+  if(!fields.length) return {errors:['No fields found. Put the field names in row 2, from column B onwards.']};
+  return {fields:fields};
+}
+
+/* ============================================================
+   Form — one field per row, built from the config
+   ============================================================ */
+function fieldId(i){ return 'f_'+i; }
+
+function buildForm(){
+  var host=$('#formHost');
+  host.innerHTML='';
+  $('#noConfig').hidden = !!config;
+  $('#photoField').hidden = !config;
+  $('#savebar').style.display = (!$('#pCapture').hidden && config) ? 'flex' : 'none';
+  if(!config){ buildTitleBlock(); return; }
+
+  config.forEach(function(f,i){
+    var wrap=document.createElement('div');
+    wrap.className='field';
+    wrap.setAttribute('data-fname',f.name);
+
+    var lab=document.createElement('label');
+    lab.className='flabel';
+    lab.setAttribute('for',fieldId(i));
+    lab.textContent=f.name.replace(/_/g,' ');
+    if(f.required){
+      var star=document.createElement('span');
+      star.className='req'; star.textContent=' *';
+      lab.appendChild(star);
+    }
+    wrap.appendChild(lab);
+
+    var ctl;
+    if(f.type==='dropdown'){
+      ctl=document.createElement('select');
+      var blank=document.createElement('option');
+      blank.value=''; blank.textContent='—';
+      ctl.appendChild(blank);
+      f.options.forEach(function(o){
+        var opt=document.createElement('option');
+        opt.value=o; opt.textContent=o;
+        ctl.appendChild(opt);
+      });
+    }else if(f.type==='textarea'){
+      ctl=document.createElement('textarea');
+      ctl.rows=3;
+    }else{
+      ctl=document.createElement('input');
+      ctl.type = f.type==='number' ? 'number' : 'text';
+      if(f.type==='number'){ ctl.inputMode='numeric'; ctl.step='1'; }
+    }
+    ctl.className='ctl';
+    ctl.id=fieldId(i);
+    ctl.setAttribute('data-field',f.name);
+    ctl.addEventListener('input',function(){ ctl.classList.remove('missing'); syncTitleBlock(); });
+    ctl.addEventListener('change',function(){ ctl.classList.remove('missing'); syncTitleBlock(); });
+    wrap.appendChild(ctl);
+
+    host.appendChild(wrap);
+  });
+
+  buildTitleBlock();
+  syncTitleBlock();
+}
+
+function getCtl(name){ return $('#formHost [data-field="'+cssEsc(name)+'"]'); }
+function cssEsc(s){ return String(s).replace(/["\\]/g,'\\$&'); }
+
+/* The header keeps the first three fields in view while you scroll. */
+function buildTitleBlock(){
+  var grid=$('#tbGrid');
+  grid.innerHTML='';
+  var shown=(config||[]).slice(0,3);
+  if(!shown.length){ grid.style.display='none'; return; }
+  grid.style.display='grid';
+  grid.style.gridTemplateColumns='repeat('+shown.length+',1fr)';
+  shown.forEach(function(f){
+    var cell=document.createElement('div'); cell.className='tb-cell';
+    var l=document.createElement('span'); l.className='tb-label'; l.textContent=f.name.replace(/_/g,' ');
+    var v=document.createElement('span'); v.className='tb-value empty'; v.textContent='—';
+    v.setAttribute('data-tb',f.name);
+    cell.appendChild(l); cell.appendChild(v); grid.appendChild(cell);
+  });
+}
+function syncTitleBlock(){
+  (config||[]).slice(0,3).forEach(function(f){
+    var el=$('#tbGrid [data-tb="'+cssEsc(f.name)+'"]'); if(!el) return;
+    var ctl=getCtl(f.name), val=ctl?String(ctl.value).trim():'';
+    el.textContent=val||'—';
+    el.classList.toggle('empty',!val);
+  });
+}
+
+function syncCounts(){
+  $('#cCount').textContent=entries.length;
+  var p=0; entries.forEach(function(e){ p+=(e.photos||[]).length });
+  $('#cPhotos').textContent=p;
+}
+
+/* ============================================================
+   Photos — downscale on capture so a full day fits on the phone
+   ============================================================ */
+var MAX_EDGE=1600, JPEG_Q=0.72;
+
+function shrink(file){
+  return new Promise(function(res){
+    var url=URL.createObjectURL(file), img=new Image();
+    img.onload=function(){
+      var w=img.naturalWidth,h=img.naturalHeight,s=Math.min(1,MAX_EDGE/Math.max(w,h));
+      var c=document.createElement('canvas');
+      c.width=Math.round(w*s); c.height=Math.round(h*s);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){ res(b||file) },'image/jpeg',JPEG_Q);
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); res(file) };
+    img.src=url;
+  });
+}
+function renderThumbs(){
+  var box=$('#thumbs'); box.innerHTML='';
+  draftPhotos.forEach(function(p,i){
+    var d=document.createElement('div'); d.className='thumb';
+    var im=document.createElement('img'); im.src=p.url; im.alt='Photo '+(i+1);
+    var x=document.createElement('button'); x.type='button'; x.textContent='×';
+    x.setAttribute('aria-label','Remove photo '+(i+1));
+    x.addEventListener('click',function(){ URL.revokeObjectURL(p.url); draftPhotos.splice(i,1); renderThumbs(); });
+    d.appendChild(im); d.appendChild(x); box.appendChild(d);
+  });
+}
+function handleFiles(files){
+  var list=Array.prototype.slice.call(files);
+  if(!list.length) return;
+  toast('Processing '+list.length+' photo'+(list.length>1?'s':'')+'…');
+  Promise.all(list.map(shrink)).then(function(blobs){
+    blobs.forEach(function(b){ draftPhotos.push({blob:b,url:URL.createObjectURL(b)}) });
+    renderThumbs(); toast(draftPhotos.length+' photo'+(draftPhotos.length>1?'s':'')+' attached');
+  });
+}
+$('#btnCamera').addEventListener('click',function(){ $('#inCamera').click() });
+$('#btnGallery').addEventListener('click',function(){ $('#inGallery').click() });
+$('#inCamera').addEventListener('change',function(e){ handleFiles(e.target.files); e.target.value=''; });
+$('#inGallery').addEventListener('change',function(e){ handleFiles(e.target.files); e.target.value=''; });
+
+/* ============================================================
+   Save / edit
+   ============================================================ */
+function pad(n){ return String(n).padStart(4,'0') }
+
+function readForm(){
+  var vals={};
+  (config||[]).forEach(function(f){
+    var ctl=getCtl(f.name);
+    vals[f.name]=ctl?String(ctl.value).trim():'';
+  });
+  return vals;
+}
+
+$('#btnSave').addEventListener('click',function(){
+  if(!config){ toast('Load a configuration first'); return; }
+
+  var vals=readForm();
+  var missing=[];
+  config.forEach(function(f){
+    var ctl=getCtl(f.name);
+    if(ctl) ctl.classList.remove('missing');
+    if(f.required && !vals[f.name]){
+      missing.push(f.name.replace(/_/g,' '));
+      if(ctl) ctl.classList.add('missing');
+    }
+  });
+  if(missing.length){
+    toast('Still needed: '+missing.join(', '));
+    var first=$('#formHost .ctl.missing');
+    if(first && first.scrollIntoView) first.scrollIntoView({block:'center'});
+    return;
+  }
+
+  var anyValue=Object.keys(vals).some(function(k){return vals[k]!==''});
+  if(!anyValue && !draftPhotos.length){ toast('Fill something in, or attach a photo, first'); return; }
+
+  var entry, wasEdit=!!editingId;
+  if(wasEdit){
+    entry=entries.filter(function(e){return e.id===editingId})[0];
+    entry.fields=vals;
+    entry.photos=draftPhotos.map(function(p){return p.blob});
+    entry.updatedAt=new Date().toISOString();
+  }else{
+    seq++;
+    entry={ id:'E'+pad(seq), seq:seq, createdAt:new Date().toISOString(),
+            fields:vals, photos:draftPhotos.map(function(p){return p.blob}) };
+    entries.unshift(entry);
+  }
+
+  store.putEntry(entry);
+  store.setMeta('seq',seq);
+
+  editingId=null;
+  $('#btnSave').textContent='Save entry';
+
+  draftPhotos.forEach(function(p){ URL.revokeObjectURL(p.url) });
+  draftPhotos=[]; renderThumbs();
+
+  // Clear the form ready for the next item.
+  config.forEach(function(f){
+    var ctl=getCtl(f.name); if(ctl) ctl.value='';
+  });
+
+  syncTitleBlock(); syncCounts();
+  toast(wasEdit ? entry.id+' updated' : entry.id+' saved');
+  if(wasEdit) showTab(1);
+});
+
+function editEntry(id){
+  if(!config){ toast('Load a configuration first'); return; }
+  var e=entries.filter(function(x){return x.id===id})[0]; if(!e) return;
+  editingId=id;
+
+  var orphan=[];
+  Object.keys(e.fields||{}).forEach(function(k){
+    if(!config.some(function(f){return f.name===k}) && e.fields[k]) orphan.push(k);
+  });
+
+  config.forEach(function(f){
+    var ctl=getCtl(f.name); if(!ctl) return;
+    var v=(e.fields||{})[f.name]||'';
+    ctl.classList.remove('missing');
+    if(f.type==='dropdown' && v && !f.options.some(function(o){return o===v})){
+      // Value captured under an older config — add it back so it is not lost on save.
+      var opt=document.createElement('option'); opt.value=v; opt.textContent=v+' (not in list)';
+      ctl.appendChild(opt);
+    }
+    ctl.value=v;
+  });
+
+  draftPhotos.forEach(function(p){ URL.revokeObjectURL(p.url) });
+  draftPhotos=(e.photos||[]).map(function(b){ return {blob:b,url:URL.createObjectURL(b)} });
+  renderThumbs(); syncTitleBlock();
+  $('#btnSave').textContent='Update '+id;
+  showTab(0);
+  if(orphan.length) toast('Note: '+orphan.join(', ')+' is not in the current config and will be dropped if you save');
+}
+
+function removeEntry(id){
+  if(!confirm('Delete '+id+'? This cannot be undone.')) return;
+  entries=entries.filter(function(e){return e.id!==id});
+  store.delEntry(id); renderList(); syncCounts(); toast(id+' deleted');
+}
+
+/* ============================================================
+   Entries list
+   ============================================================ */
+function fmtTime(iso){
+  var d=new Date(iso);
+  return d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'})+' '+
+         d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false});
+}
+function renderList(){
+  var box=$('#list'); box.innerHTML='';
+  $('#btnCsv').disabled=$('#btnCsvZip').disabled=!entries.length;
+  if(!entries.length){
+    box.innerHTML='<div class="empty-state"><p>Nothing captured yet. Head to Capture and log your first item.</p></div>';
+    return;
+  }
+  // Column order follows the config where there is one; otherwise the entry's own keys.
+  entries.forEach(function(e){
+    var f=e.fields||{};
+    var names=config ? config.map(function(x){return x.name}) : Object.keys(f);
+    var head=names.slice(0,3), rest=names.slice(3);
+
+    var loc=head.map(function(n){return f[n]}).filter(Boolean).join('  /  ')||'No location';
+    var lead=rest.length ? (f[rest[0]]||'') : '';
+    var metaBits=rest.slice(lead?1:0).filter(function(n){return f[n]}).map(function(n){
+      return '<b>'+esc(n.replace(/_/g,' '))+'</b> '+esc(f[n]);
+    });
+    if((e.photos||[]).length) metaBits.push('<b>'+e.photos.length+'</b> photo'+(e.photos.length>1?'s':''));
+
+    var c=document.createElement('div'); c.className='card';
+    c.innerHTML=
+      '<div class="card-top"><span class="card-id"></span><span class="card-time"></span></div>'+
+      '<div class="card-loc"></div><div class="card-asset"></div>'+
+      '<div class="card-meta"></div>'+
+      '<div class="card-acts"><button class="mini ghost" type="button">Edit</button>'+
+      '<button class="mini ghost" type="button">Delete</button></div>';
+    c.querySelector('.card-id').textContent=e.id;
+    c.querySelector('.card-time').textContent=fmtTime(e.createdAt);
+    c.querySelector('.card-loc').textContent=loc;
+    c.querySelector('.card-asset').textContent=lead||'(no description)';
+    c.querySelector('.card-meta').innerHTML=metaBits.join('  ·  ');
+    var b=c.querySelectorAll('.card-acts button');
+    b[0].addEventListener('click',function(){editEntry(e.id)});
+    b[1].addEventListener('click',function(){removeEntry(e.id)});
+    box.appendChild(c);
+  });
+}
+function esc(s){
+  return String(s).replace(/[&<>"]/g,function(m){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m];
+  });
+}
+
+/* ============================================================
+   Config tab
+   ============================================================ */
+function renderConfigPanel(){
+  var status=$('#configStatus'), chips=$('#configFields');
+  chips.innerHTML='';
+  if(!config){
+    status.textContent='No configuration loaded. Upload the audit CSV to build the capture form.';
+    return;
+  }
+  var drops=config.filter(function(f){return f.type==='dropdown'}).length;
+  status.textContent='Configuration loaded — '+config.length+' field'+(config.length>1?'s':'')+
+                     ', '+drops+' dropdown'+(drops===1?'':'s')+'.';
+  config.forEach(function(f){
+    var chip=document.createElement('span'); chip.className='chip';
+    var t=document.createElement('span'); t.textContent=f.name.replace(/_/g,' ')+(f.required?' *':'');
+    var i=document.createElement('i');
+    i.textContent = f.type==='dropdown' ? f.options.length+' opts' : f.type;
+    chip.appendChild(t); chip.appendChild(i); chips.appendChild(chip);
+  });
+}
+
+function showConfigErrors(list){
+  var box=$('#configErrors');
+  if(!list || !list.length){ box.hidden=true; box.innerHTML=''; return; }
+  box.hidden=false;
+  box.innerHTML='<b>Configuration not loaded</b>'+
+    list.slice(0,8).map(function(m){return esc(m)}).join('<br>')+
+    (list.length>8 ? '<br>… and '+(list.length-8)+' more' : '');
+}
+
+$('#btnUploadConfig').addEventListener('click',function(){ $('#inConfig').click() });
+
+$('#inConfig').addEventListener('change',function(e){
+  var file=e.target.files[0];
+  e.target.value='';
+  if(!file) return;
+
+  if(/\.(xlsx|xls|numbers|ods)$/i.test(file.name)){
+    showConfigErrors(['"'+file.name+'" is a spreadsheet, not a CSV. In Excel use File → Save As and choose "CSV UTF-8 (Comma delimited)".']);
+    toast('Save the sheet as CSV first');
+    return;
+  }
+
+  var reader=new FileReader();
+  reader.onerror=function(){ toast('Could not read that file'); };
+  reader.onload=function(ev){
+    var res;
+    try{ res=parseConfig(String(ev.target.result)); }
+    catch(err){ showConfigErrors(['Could not read the file: '+err.message]); toast('Config not loaded'); return; }
+
+    if(res.errors){ showConfigErrors(res.errors); toast('Config not loaded — see the Config tab'); return; }
+
+    if(entries.length){
+      var changed = !config || res.fields.length!==config.length ||
+        res.fields.some(function(f,i){ return config[i].name!==f.name; });
+      if(changed && !confirm('You have '+entries.length+' entr'+(entries.length>1?'ies':'y')+
+          ' captured. The exported columns will follow the new configuration, and values under '+
+          'field names that no longer exist will export blank.\n\nExport first if you have not. Load the new config?')){
+        toast('Config not changed');
+        return;
+      }
+    }
+
+    showConfigErrors(null);
+    config=res.fields;
+    store.setMeta('config',config);
+
+    buildForm(); renderConfigPanel(); renderList();
+    toast('Config loaded — '+config.length+' fields');
+  };
+  reader.readAsText(file,'UTF-8');
+});
+
+$('#btnClearConfig').addEventListener('click',function(){
+  if(!config){ toast('Nothing to clear'); return; }
+  if(!confirm('Clear the configuration? Captured entries are kept, but you will not be able to capture or export until a config is loaded again.')) return;
+  config=null; store.setMeta('config',null);
+  editingId=null; $('#btnSave').textContent='Save entry';
+  showConfigErrors(null);
+  buildForm(); renderConfigPanel(); renderList();
+  toast('Config cleared');
+});
+
+$('#btnWipe').addEventListener('click',function(){
+  if(!entries.length){ toast('Nothing to delete'); return; }
+  if(!confirm('Delete all '+entries.length+' entries and their photos?')) return;
+  if(!confirm('Last check — export first if you have not. Delete everything?')) return;
+  entries=[]; seq=0; editingId=null; $('#btnSave').textContent='Save entry';
+  store.clearEntries(); store.setMeta('seq',0);
+  renderList(); syncCounts(); toast('All entries deleted');
+});
+
+/* ============================================================
+   Export — columns follow the loaded config
+   ============================================================ */
+function csvCell(v){
+  var s=String(v==null?'':v);
+  return /[",\r\n]/.test(s) || s!==s.trim() ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function photoNames(e){ return (e.photos||[]).map(function(_,i){ return e.id+'_'+(i+1)+'.jpg' }); }
+
+/* Local wall-clock time, day-first, as the example export uses. */
+function csvTime(iso){
+  var d=new Date(iso), p=function(n){return String(n).padStart(2,'0')};
+  return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear()+' '+
+         p(d.getHours())+':'+p(d.getMinutes());
+}
+function buildCsv(){
+  if(!config) return '';
+  var names=config.map(function(f){return f.name});
+  var rows=[['entry_id','captured_at'].concat(names).map(csvCell).join(',')];
+  entries.slice().sort(function(a,b){return a.seq-b.seq}).forEach(function(e){
+    var f=e.fields||{};
+    rows.push([e.id,csvTime(e.createdAt)].concat(names.map(function(n){return f[n]||''})).map(csvCell).join(','));
+  });
+  return '\uFEFF'+rows.join('\r\n')+'\r\n';
+}
+
+function stamp(){
+  var d=new Date(), p=function(n){return String(n).padStart(2,'0')};
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes());
+}
+function download(blob,name){
+  var url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url) },1500);
+}
+
+$('#btnCsv').addEventListener('click',function(){
+  if(!entries.length) return;
+  if(!config){ toast('Load a configuration first — it sets the columns'); return; }
+  download(new Blob([buildCsv()],{type:'text/csv;charset=utf-8'}),'audit_'+stamp()+'.csv');
+  toast('CSV exported');
+});
+
+/* --- Minimal store-only ZIP writer (no library, works offline) --- */
+var CRC_TABLE=(function(){
+  var t=new Uint32Array(256);
+  for(var n=0;n<256;n++){ var c=n; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; }
+  return t;
+})();
+function crc32(u8){
+  var c=0xFFFFFFFF;
+  for(var i=0;i<u8.length;i++) c=CRC_TABLE[(c^u8[i])&0xFF]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;
+}
+function makeZip(files){
+  var enc=new TextEncoder(), parts=[], central=[], offset=0;
+  files.forEach(function(f){
+    var nb=enc.encode(f.name), crc=crc32(f.data), len=f.data.length;
+    var lh=new Uint8Array(30+nb.length), lv=new DataView(lh.buffer);
+    lv.setUint32(0,0x04034b50,true); lv.setUint16(4,20,true); lv.setUint16(6,0,true);
+    lv.setUint16(8,0,true); lv.setUint16(10,0,true); lv.setUint16(12,0,true);
+    lv.setUint32(14,crc,true); lv.setUint32(18,len,true); lv.setUint32(22,len,true);
+    lv.setUint16(26,nb.length,true); lv.setUint16(28,0,true);
+    lh.set(nb,30); parts.push(lh,f.data);
+    var cd=new Uint8Array(46+nb.length), cv=new DataView(cd.buffer);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint16(8,0,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,len,true); cv.setUint32(24,len,true);
+    cv.setUint16(28,nb.length,true); cv.setUint32(38,0,true); cv.setUint32(42,offset,true);
+    cd.set(nb,46); central.push(cd);
+    offset+=lh.length+len;
+  });
+  var cdSize=central.reduce(function(a,c){return a+c.length},0);
+  var end=new Uint8Array(22), ev=new DataView(end.buffer);
+  ev.setUint32(0,0x06054b50,true); ev.setUint16(8,central.length,true);
+  ev.setUint16(10,central.length,true); ev.setUint32(12,cdSize,true); ev.setUint32(16,offset,true);
+  return new Blob(parts.concat(central,[end]),{type:'application/zip'});
+}
+
+$('#btnCsvZip').addEventListener('click',function(){
+  if(!entries.length) return;
+  if(!config){ toast('Load a configuration first — it sets the columns'); return; }
+  var btn=this; btn.disabled=true; toast('Packing photos…');
+  var files=[{name:'audit.csv',data:new TextEncoder().encode(buildCsv())}];
+  var jobs=[];
+  entries.slice().sort(function(a,b){return a.seq-b.seq}).forEach(function(e){
+    var names=photoNames(e);
+    (e.photos||[]).forEach(function(b,i){
+      jobs.push(b.arrayBuffer().then(function(ab){
+        files.push({name:'photos/'+names[i],data:new Uint8Array(ab)});
+      }));
+    });
+  });
+  Promise.all(jobs).then(function(){
+    download(makeZip(files),'audit_'+stamp()+'.zip');
+    btn.disabled=false; toast('CSV + photos exported');
+  }).catch(function(){ btn.disabled=false; toast('Export failed — try CSV only'); });
+});
+
+/* ============================================================
+   Boot
+   ============================================================ */
+var LEGACY=[['building','Building'],['floor','Floor'],['room','Room'],['asset','Asset'],
+            ['type','Type'],['qty','Quantity'],['notes','Notes']];
+function migrate(e){
+  if(e.fields) return e;
+  e.fields={};
+  LEGACY.forEach(function(p){ if(e[p[0]]!=null && e[p[0]]!=='') e.fields[p[1]]=String(e[p[0]]); });
+  return e;
+}
+
+openDb().then(function(){
+  return Promise.all([store.getMeta('config'),store.getMeta('seq'),store.allEntries()]);
+}).then(function(r){
+  config = (r[0] && r[0].length) ? r[0] : null;
+  seq = r[1] || 0;
+  entries = (r[2]||[]).map(migrate).sort(function(a,b){return b.seq-a.seq});
+  if(!seq && entries.length) seq=entries[0].seq||entries.length;
+
+  buildForm(); syncCounts(); renderList(); renderConfigPanel(); showTab(0);
+
+  var note=$('#storeNote');
+  if(usingMemory){
+    note.innerHTML='<b>Warning — this session only.</b> The browser is not allowing local storage, so entries will be lost on refresh. Open the app from a hosted link rather than a downloaded file.';
+    toast('Storage unavailable — export before closing');
+  }else if(navigator.storage && navigator.storage.persist){
+    navigator.storage.persist().then(function(ok){
+      note.textContent = ok
+        ? 'Entries are saved on this phone and marked as persistent. Nothing is sent anywhere.'
+        : 'Entries are saved on this phone. Nothing is sent anywhere. Export at the end of each day so a browser storage clean-up cannot cost you a day of work.';
+    });
+  }else{
+    note.textContent='Entries are saved on this phone. Nothing is sent anywhere.';
+  }
+}).catch(function(err){
+  toast('Startup problem — '+(err && err.message ? err.message : 'unknown'));
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+})();
+</script>
+</body>
+</html>
